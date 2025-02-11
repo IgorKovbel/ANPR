@@ -3,7 +3,7 @@
 	url = https://github.com/kangben258/HiT.git
 [submodule "libs/fast"]
 	path = libs/fast
-	url = https://github.com/kangben258/HiT.git
+	url = https://github.com/ankandrew/fast-plate-ocr.git
 [submodule "libs/yolov10"]
 	path = libs/yolov10
 	url = https://github.com/THU-MIG/yolov10.git
