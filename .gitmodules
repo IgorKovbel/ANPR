@@ -1,0 +1,9 @@
+[submodule "libs/HiT"]
+	path = libs/HiT
+	url = https://github.com/kangben258/HiT.git
+[submodule "libs/fast"]
+	path = libs/fast
+	url = https://github.com/kangben258/HiT.git
+[submodule "libs/yolov10"]
+	path = libs/yolov10
+	url = https://github.com/THU-MIG/yolov10.git

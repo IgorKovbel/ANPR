@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WebRTC + Фото/Відео Завантаження</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(to right, #141e30, #243b55);
+            color: white;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .section-title {
+            margin-top: 40px;
+            font-size: 24px;
+            text-transform: uppercase;
+            text-decoration: underline;
+        }
+        .upload-form {
+            margin: 20px auto;
+            display: inline-block;
+            text-align: left;
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+        }
+        input[type="file"] {
+            margin-bottom: 10px;
+        }
+        .btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            background: #00ffcc;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.3s ease;
+            text-transform: uppercase;
+            box-shadow: 0px 3px 10px rgba(0, 255, 204, 0.5);
+        }
+        .btn:hover {
+            background: #00cc99;
+            box-shadow: 0px 5px 15px rgba(0, 255, 204, 0.8);
+        }
+        .video-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        video {
+            width: 80%;
+            max-width: 900px;
+            aspect-ratio: 16 / 9;
+            border: 5px solid #00ffcc;
+            border-radius: 15px;
+            box-shadow: 0px 4px 10px rgba(0, 255, 204, 0.4);
+            background: #000;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        video:hover {
+            transform: scale(1.03);
+        }
+        .fullscreen {
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            border: none !important;
+            border-radius: 0 !important;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 9999;
+            background: black;
+        }
+    </style>
+</head>
+<body>
+<h1>Licence Plate Project</h1>
+
+<!-- РОЗДІЛ 1: Завантаження зображення (лише номер) -->
+<div class="section-title">Завантажити зображення</div>
+<div class="upload-form">
+    <form id="imageForm">
+        <label for="imageFile">Оберіть зображення:</label>
+        <input id="imageFile" name="file" type="file" accept="image/*" required />
+        <button type="submit" class="btn">Обробити</button>
+    </form>
+</div>
+<div>
+    <p>Результат обробки:</p>
+    <img id="processedImage" src="" alt="Processed Image" style="max-width: 60%; border:2px solid #00ffcc; display:none;"/>
+    <p id="imagePlateResult" style="font-size: 18px; margin-top:10px;"></p>
+</div>
+
+<!-- РОЗДІЛ 2: Завантаження відео (отримуємо готове processed mp4) -->
+<div class="section-title">Завантажити відео</div>
+<div class="upload-form">
+    <form id="videoForm">
+        <label for="videoFile">Оберіть відеофайл:</label>
+        <input id="videoFile" name="file" type="file" accept="video/*" required />
+        <button type="submit" class="btn">Обробити</button>
+    </form>
+</div>
+<div>
+    <p>Оброблене відео:</p>
+    <video id="processedVideo" controls style="max-width: 60%; display:none;" onclick="toggleFullScreen(this)"></video>
+</div>
+
+<!-- РОЗДІЛ 3: WebRTC -->
+<div class="section-title">Онлайн-камера (WebRTC)</div>
+<p>Натисніть на відео, щоб розгорнути на весь екран.</p>
+
+<div class="video-container">
+    <div>
+        <p>Camera:</p>
+        <video id="localVideo" autoplay muted playsinline onclick="toggleFullScreen(this)"></video>
+    </div>
+    <div>
+        <p>Processed video:</p>
+        <video id="remoteVideo" autoplay playsinline onclick="toggleFullScreen(this)"></video>
+    </div>
+</div>
+
+<button class="btn" onclick="start()">🔄 Reload WebRTC</button>
+<button class="btn" id="plateButton" onclick="redirectToPlate()">
+    Lat Number: <span id="plateDisplay">N/A</span>
+</button>
+
+<script>
+    // ============= 1. Завантаження зображення =============
+    const imageForm = document.getElementById('imageForm');
+    const imageFileInput = document.getElementById('imageFile');
+    const processedImage = document.getElementById('processedImage');
+    const imagePlateResult = document.getElementById('imagePlateResult');
+
+    imageForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!imageFileInput.files.length) {
+            alert("Оберіть, будь ласка, зображення!");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', imageFileInput.files[0]);
+
+        try {
+            const resp = await fetch('/upload_image', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert("Помилка: " + err.detail);
+                return;
+            }
+
+            // Зчитуємо заголовок з розпізнаним номером
+            const recognizedPlate = resp.headers.get('X-Recognized-Plate') || 'NOT_FOUND';
+
+            // Отримуємо тіло відповіді як Blob (зображення)
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            processedImage.src = url;
+            processedImage.style.display = 'block';
+
+            if (recognizedPlate && recognizedPlate !== 'NOT_FOUND') {
+                imagePlateResult.innerText = "Розпізнаний номер: " + recognizedPlate;
+            } else {
+                imagePlateResult.innerText = "Номер не знайдено або впевненість низька";
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Сталася помилка при завантаженні зображення.");
+        }
+    });
+
+    // ============= 2. Завантаження відео =============
+    const videoForm = document.getElementById('videoForm');
+    const videoFileInput = document.getElementById('videoFile');
+    const processedVideo = document.getElementById('processedVideo');
+
+    videoForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!videoFileInput.files.length) {
+            alert("Оберіть, будь ласка, відеофайл!");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', videoFileInput.files[0]);
+
+        try {
+            const resp = await fetch('/upload_video', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert("Помилка: " + err.detail);
+                return;
+            }
+
+            // Отримуємо тіло відповіді як Blob (mp4)
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            processedVideo.src = url;
+            processedVideo.style.display = 'block';
+            processedVideo.load();
+        } catch (error) {
+            console.error(error);
+            alert("Сталася помилка при завантаженні відео.");
+        }
+    });
+
+    // ============= 3. WebRTC: відкриття камери й стрім до сервера =============
+    let localVideo = document.getElementById('localVideo');
+    let remoteVideo = document.getElementById('remoteVideo');
+    let pc = null;
+
+    async function start() {
+        const constraints = {
+            video: {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                aspectRatio: 16 / 9,
+                facingMode: "environment"
+            },
+            audio: false
+        };
+
+        try {
+            const localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            localVideo.srcObject = localStream;
+
+            pc = new RTCPeerConnection({
+                iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+            });
+
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            pc.ontrack = (event) => {
+                if (event.track.kind === 'video') {
+                    remoteVideo.srcObject = event.streams[0];
+                }
+            };
+
+            pc.onicecandidate = e => {
+                if (!e.candidate) {
+                    console.log("Got final candidate!");
+                }
+            };
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            const resp = await fetch('/offer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sdp: pc.localDescription.sdp,
+                    type: pc.localDescription.type
+                })
+            });
+            const answer = await resp.json();
+            await pc.setRemoteDescription(answer);
+
+            console.log("WebRTC connected: local->server->local (processed)");
+        } catch (error) {
+            console.error("Помилка доступу до камери:", error);
+        }
+    }
+
+    function toggleFullScreen(videoElement) {
+        if (!document.fullscreenElement) {
+            if (videoElement.requestFullscreen) {
+                videoElement.requestFullscreen();
+            } else if (videoElement.mozRequestFullScreen) {
+                videoElement.mozRequestFullScreen();
+            } else if (videoElement.webkitRequestFullscreen) {
+                videoElement.webkitRequestFullscreen();
+            } else if (videoElement.msRequestFullscreen) {
+                videoElement.msRequestFullscreen();
+            } else {
+                videoElement.classList.add("fullscreen");
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                document.mozCancelFullScreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            } else {
+                videoElement.classList.remove("fullscreen");
+            }
+        }
+    }
+
+    // Функція для отримання номера лише один раз
+    async function updatePlate() {
+        try {
+            const resp = await fetch('/latest_plate');
+            const data = await resp.json();
+            document.getElementById('plateDisplay').innerText = data.plate || 'N/A';
+        } catch (error) {
+            console.error("Помилка при зчитуванні номера:", error);
+        }
+    }
+
+    // Працюємо один раз: отримуємо номер, коли WebRTC встановлено
+    updatePlate();
+    start().catch(console.error);
+
+    // Функція для переходу за посиланням із номером
+    function redirectToPlate() {
+        const plate = document.getElementById('plateDisplay').innerText;
+        if (plate === 'N/A' || plate.trim() === '') {
+            alert("Номер авто ще не визначено");
+            return;
+        }
+        const url = `https://ua.carplates.app/number/${plate}`;
+        window.open(url, '_blank');
+    }
+</script>
+
+</body>
+</html>
