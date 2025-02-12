@@ -1,8 +1,5 @@
 # ANPR
-<video controls>
-  <source src='./result.mp4' type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+<img src='result.gif'></img>
 
 # Licence Plate Project
 
